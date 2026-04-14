@@ -1,11 +1,11 @@
-"""Elo + bounty rating engine.
+"""Elo + bounty + chip-performance rating engine.
 
 Pure functions — no I/O, no side effects. Easy to test and reason about.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from shad_poker_bot.config import RatingConfig
 
@@ -19,7 +19,8 @@ class PlayerResult:
     games_played: int
     attend_streak: int
     position: int            # 1 = winner, N = first eliminated
-    knockouts: list[float]   # list of Elo ratings of knocked-out opponents
+    knockouts: list[float] = field(default_factory=list)
+    chip_factor: float = 1.0  # >1 = above-average chips, <1 = below
 
 
 @dataclass
@@ -66,6 +67,9 @@ class RatingEngine:
 
             bounty = self._bounty_bonus(r.elo, r.knockouts)
             att_mult = self._attendance_multiplier(r.attend_streak)
+
+            # Apply chip factor to base Elo change
+            elo_change *= r.chip_factor
 
             # Attendance multiplier only boosts positive Elo changes
             adjusted = elo_change * att_mult if elo_change > 0 else elo_change

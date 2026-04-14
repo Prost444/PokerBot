@@ -46,12 +46,12 @@ async def game_service(repo: Repository, rating_cfg: RatingConfig) -> GameServic
 async def populated_repo(repo: Repository) -> Repository:
     """Repo with 6 pre-registered players."""
     players = [
-        (1001, "alice", "Алиса"),
-        (1002, "bob", "Боб"),
-        (1003, "charlie", "Чарли"),
-        (1004, "diana", "Диана"),
-        (1005, "eve", "Ева"),
-        (1006, "frank", "Франк"),
+        (1001, "alice", "Alice"),
+        (1002, "bob", "Bob"),
+        (1003, "charlie", "Charlie"),
+        (1004, "diana", "Diana"),
+        (1005, "eve", "Eve"),
+        (1006, "frank", "Frank"),
     ]
     for tg_id, username, name in players:
         await repo.add_player(tg_id, name, username)

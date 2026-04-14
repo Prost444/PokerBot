@@ -8,7 +8,6 @@ edge cases (1 player, 2 players, huge Elo gap, Elo floor).
 from shad_poker_bot.config import RatingConfig
 from shad_poker_bot.services.rating import PlayerResult, RatingEngine
 
-
 # ── Basic game scenarios ───────────────────────────────────────────
 
 

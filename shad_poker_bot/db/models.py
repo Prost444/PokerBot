@@ -27,19 +27,32 @@ CREATE TABLE IF NOT EXISTS seasons (
 );
 
 CREATE TABLE IF NOT EXISTS games (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    season_id   INTEGER REFERENCES seasons(id),
-    created_at  TEXT DEFAULT (datetime('now')),
-    finished_at TEXT,
-    status      TEXT DEFAULT 'registration',
-    created_by  INTEGER REFERENCES players(id)
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    season_id     INTEGER REFERENCES seasons(id),
+    created_at    TEXT DEFAULT (datetime('now')),
+    finished_at   TEXT,
+    status        TEXT DEFAULT 'registration',
+    created_by    INTEGER REFERENCES players(id),
+    game_type     TEXT DEFAULT 'regular',
+    seating_type  TEXT DEFAULT 'snake'
+);
+
+CREATE TABLE IF NOT EXISTS game_tables (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id       INTEGER NOT NULL REFERENCES games(id),
+    table_number  INTEGER NOT NULL,
+    status        TEXT DEFAULT 'active',
+    finished_at   TEXT,
+    UNIQUE(game_id, table_number)
 );
 
 CREATE TABLE IF NOT EXISTS game_players (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id             INTEGER NOT NULL REFERENCES games(id),
     player_id           INTEGER NOT NULL REFERENCES players(id),
+    table_id            INTEGER REFERENCES game_tables(id),
     finish_position     INTEGER,
+    final_chips         INTEGER,
     joined_at           TEXT DEFAULT (datetime('now')),
     is_late_join        INTEGER DEFAULT 0,
     eliminated_by_id    INTEGER REFERENCES players(id),
@@ -50,6 +63,7 @@ CREATE TABLE IF NOT EXISTS elo_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id       INTEGER NOT NULL REFERENCES players(id),
     game_id         INTEGER NOT NULL REFERENCES games(id),
+    table_id        INTEGER REFERENCES game_tables(id),
     elo_before      REAL    NOT NULL,
     elo_after       REAL    NOT NULL,
     elo_change      REAL    NOT NULL,
@@ -61,6 +75,8 @@ CREATE TABLE IF NOT EXISTS elo_history (
 
 CREATE INDEX IF NOT EXISTS idx_game_players_game   ON game_players(game_id);
 CREATE INDEX IF NOT EXISTS idx_game_players_player ON game_players(player_id);
+CREATE INDEX IF NOT EXISTS idx_game_players_table  ON game_players(table_id);
+CREATE INDEX IF NOT EXISTS idx_game_tables_game    ON game_tables(game_id);
 CREATE INDEX IF NOT EXISTS idx_elo_history_player   ON elo_history(player_id);
 CREATE INDEX IF NOT EXISTS idx_elo_history_game     ON elo_history(game_id);
 CREATE INDEX IF NOT EXISTS idx_games_status         ON games(status);

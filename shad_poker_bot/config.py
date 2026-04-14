@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from os import getenv
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -34,6 +33,9 @@ class RatingConfig:
 
     attendance_bonus_step: float = 0.05
     attendance_bonus_cap: float = 1.25
+
+    chip_weight: float = 0.3        # how much chip count influences rating
+    starting_chips: int = 5000
 
     season_regression_weight: float = 0.8  # R_new = R*0.8 + 1200*0.2
     season_length_weeks: int = 8

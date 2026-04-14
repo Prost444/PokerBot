@@ -1,184 +1,134 @@
-# 🃏 ШАД Покер Бот
+# 🃏 Poker Bot
 
-Telegram-бот для проведения покерных вечеров в Школе анализа данных. Отслеживает рейтинг игроков по адаптированной системе Эло с баунти-бонусами, мотивирует играть вдумчиво и ходить регулярно.
+Telegram bot for running poker evenings. Tracks player ratings using an adapted Elo system with chip performance, bounty bonuses, and attendance rewards.
 
-## Зачем это нужно
+> **Disclaimer:** This is a purely recreational, non-gambling activity. No real money, bets, or prizes of monetary value are involved. The rating system exists solely to encourage thoughtful play and regular attendance. All chips are play chips with no cash equivalent.
 
-Когда покер идёт «на интерес», у игроков нет стимула играть осмысленно — можно разориться за пару раздач и просто взять новые фишки. Бот решает эту проблему, вводя **репутационные последствия** каждого решения за столом через рейтинговую систему.
+## How It Works
 
-## Возможности
+Every evening, the admin creates a game via the bot. Players register, get seated at tables automatically, and play poker with play chips (5000 starting stack, 50/100 blinds). The bot tracks eliminations, chip counts, and calculates Elo rating changes at the end.
 
-- **Рейтинг Эло** — адаптированная мультиплеерная формула с учётом силы соперников
-- **Баунти-система** — бонусные очки за нокауты, привязанные к разнице рейтингов
-- **Бонус за регулярность** — множитель до ×1.25 за серию посещений
-- **Сезонная структура** — 8-недельные сезоны с мягким сбросом рейтинга
-- **Управление играми** — полный цикл: регистрация → игра → нокауты → итоги
+### For Players
 
-## Быстрый старт
+1. **Register once:** `/register YourName`
+2. **Join a game:** `/join` (during registration) or `/join 2` (late join, pick table 2)
+3. **Check your stats:** `/stats`
+4. **See the leaderboard:** `/rating`
+5. **View tables:** `/tables`
 
-### 1. Клонировать репозиторий
+### For Admins
+
+1. **Create a game evening:** `/new_game` (defaults: regular, snake seating)
+   - Tournament with bounty: `/new_game tournament`
+   - Divisional seating: `/new_game regular divisional`
+2. **Start the game:** `/go` — generates table seating automatically
+3. **Record knockouts:** `/ko @eliminated @eliminator`
+4. **Record chip counts:** `/chips @player 12500` (for surviving players before closing a table)
+5. **Close a table:** `/close_table 1` — calculates ratings for that table
+6. **Finish the evening:** `/finish` — closes remaining tables, updates streaks, shows results
+
+### Final Table
+
+To run a final table, simply finish the current game (`/finish`) and start a new one (`/new_game`) with only the qualifying players joining. The bot handles each game independently.
+
+## Commands Reference
+
+| Command | Who | Description |
+|---------|-----|-------------|
+| `/register Name` | Everyone | One-time registration |
+| `/join [N]` | Everyone | Join game; N = table number for late arrivals |
+| `/rating` | Everyone | Top 20 leaderboard |
+| `/stats` | Everyone | Personal stats and recent history |
+| `/game` | Everyone | Current game status |
+| `/tables` | Everyone | Table seating and alive status |
+| `/new_game [type] [seating]` | Admin | Create game (regular/tournament, snake/divisional) |
+| `/go` | Admin | Start game, generate seating |
+| `/ko @out @by` | Admin | Record elimination |
+| `/chips @player N` | Admin | Record chip count for a player |
+| `/close_table N` | Admin | Close table N, calculate ratings |
+| `/finish` | Admin | End evening, show results |
+| `/cancel` | Admin | Cancel current game |
+
+## Game Types
+
+- **Regular** — Elo changes based on finishing position and chip performance. No bounty bonuses.
+- **Tournament** — Same as regular, plus bounty chips. Each knockout awards bonus rating points scaled by the rating difference between hunter and victim.
+
+## Seating Types
+
+- **Snake** (default) — Players sorted by Elo are distributed in a zigzag across tables, balancing average rating per table. Best for mixed-skill evenings.
+- **Divisional** — Players sorted by Elo fill tables sequentially (top tier together, next tier together). Gives newcomers a more comfortable environment.
+
+Max 9 players per table. Late arrivals choose which table to join.
+
+## Rating System
+
+### Elo (core)
+
+Generalized Elo formula for N players. The actual score `S = (N - k) / (N - 1)` is compared against the expected score (mean pairwise win probability). K-factor adapts to experience: 40 for newcomers (< 10 games), 30 for developing (< 1400 Elo), 20 for established players.
+
+### Chip Performance
+
+Players' final chip counts influence their Elo change. A player who accumulated significantly more chips than average gets a rating boost (up to +50%), while a player barely surviving gets a slight penalty (down to -50%). Eliminated players are unaffected — their position already reflects elimination. Use `/chips @player amount` before closing a table.
+
+### Bounty (tournament only)
+
+Each knockout awards: `bounty = 2 + (victim_Elo - hunter_Elo) / 200` (minimum 1.0). Knocking out stronger opponents is more rewarding, which protects newcomers from targeted hunting.
+
+### Attendance Bonus
+
+Multiplier `min(1.0 + 0.05 * streak, 1.25)` applied to positive Elo changes. Maximum x1.25 for 5+ consecutive evenings. Missing resets the streak but doesn't penalize.
+
+### Seasons
+
+Each season is 8 weeks. Between seasons, ratings softly regress toward 1200: `R_new = R_old * 0.8 + 1200 * 0.2`.
+
+For the full design rationale, see [docs/rating_concept.md](docs/rating_concept.md).
+
+## Setup
 
 ```bash
 git clone https://github.com/Prost444/PokerBot.git
 cd PokerBot
-```
-
-### 2. Создать виртуальное окружение
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-```
-
-### 3. Установить зависимости
-
-```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 4. Настроить переменные окружения
-
-```bash
-cp .env.example .env
-```
-
-Заполнить `.env`:
-
-```env
-BOT_TOKEN=your-token-from-botfather
-ADMIN_IDS=123456789,987654321
-```
-
-### 5. Запустить бота
-
-```bash
+cp .env.example .env   # fill in BOT_TOKEN and ADMIN_IDS
 python -m shad_poker_bot.main
 ```
 
-## Структура проекта
-
-```
-PokerBot/
-├── shad_poker_bot/
-│   ├── main.py              # Точка входа, инициализация бота
-│   ├── config.py             # Конфигурация через dataclasses
-│   ├── bot/
-│   │   ├── filters.py        # Фильтр IsAdmin
-│   │   ├── formatting.py     # Форматирование сообщений
-│   │   └── handlers/
-│   │       ├── common.py     # /start, /help, /rating, /game
-│   │       ├── player.py     # /register, /join, /stats
-│   │       └── admin.py      # /new_game, /go, /ko, /finish, /cancel
-│   ├── db/
-│   │   ├── models.py         # SQL-схема и init_db()
-│   │   └── repository.py     # Слой доступа к данным (async SQLite)
-│   └── services/
-│       ├── game.py           # Оркестратор игровой сессии
-│       └── rating.py         # Движок рейтинга (Elo + bounty)
-├── tests/                    # Автотесты (pytest)
-├── docs/
-│   └── rating_concept.md     # Концепция рейтинговой системы
-├── requirements.txt
-├── .env.example
-└── .gitignore
-```
-
-## Архитектура
-
-Проект использует трёхслойную архитектуру с чётким разделением ответственности:
-
-```
-Telegram handlers  →  GameService  →  Repository  →  SQLite
-                       RatingEngine (stateless, pure functions)
-```
-
-**Handlers** — обрабатывают команды Telegram, валидируют ввод, форматируют ответы. **GameService** — бизнес-логика жизненного цикла игры: создание, старт, нокауты, завершение. **RatingEngine** — чистые функции без побочных эффектов для расчёта Эло и баунти. **Repository** — тонкая обёртка над SQLite, все SQL-запросы изолированы здесь.
-
-Зависимости инжектируются через middleware aiogram — каждый хэндлер получает `repo`, `game_service` и `admin_cfg` автоматически.
-
-## Команды бота
-
-### Для всех игроков
-
-| Команда | Описание |
-|---------|----------|
-| `/start` | Приветствие и текущий рейтинг |
-| `/help` | Список всех команд |
-| `/register Имя` | Регистрация (имя опционально) |
-| `/join` | Присоединиться к текущей игре |
-| `/rating` | Таблица лидеров (топ-20) |
-| `/stats` | Личная статистика и история |
-| `/game` | Статус текущей игры |
-
-### Для администраторов
-
-| Команда | Описание |
-|---------|----------|
-| `/new_game` | Создать игровой вечер |
-| `/go` | Запустить игру (закрыть регистрацию) |
-| `/ko @выбывший @выбивший` | Записать нокаут |
-| `/finish` | Завершить игру и подвести итоги |
-| `/cancel` | Отменить текущую игру |
-
-## Рейтинговая система
-
-### Эло (ядро)
-
-Используется обобщённая формула Эло для N игроков. Фактический результат: `S = (N − k) / (N − 1)`, где k — занятое место. Ожидаемый результат — среднее попарных вероятностей выигрыша по стандартной формуле Эло. K-фактор зависит от опыта игрока: 40 для новичков (< 10 игр), 30 для развивающихся (Elo < 1400), 20 для опытных.
-
-### Баунти
-
-За каждый нокаут начисляется бонус: `bounty = 2 + (Elo_жертвы − Elo_охотника) / 200`, но не менее 1.0. Выбить сильного соперника выгоднее, что защищает новичков от целенаправленной охоты.
-
-### Бонус за регулярность
-
-Множитель `min(1.0 + 0.05 × streak, 1.25)` применяется к положительным изменениям Эло. Максимум ×1.25 за 5+ вечеров подряд. Пропуск обнуляет серию, но не штрафует.
-
-### Сезоны
-
-Каждый сезон — 8 недель. Между сезонами рейтинг мягко регрессирует к базовым 1200: `R_new = R_old × 0.8 + 1200 × 0.2`.
-
-Подробная концепция — в [docs/rating_concept.md](docs/rating_concept.md).
-
-## Тестирование
+## Testing
 
 ```bash
 pip install -r requirements-test.txt
 pytest --cov=shad_poker_bot --cov-report=term-missing
 ```
 
-Тесты покрывают рейтинговый движок (unit), слой данных (integration с in-memory SQLite), бизнес-логику GameService и edge-кейсы: повторная регистрация, попытка сесть за несколько столов, двойной join, нокаут незарегистрированного игрока и т.д.
+## Project Structure
 
-## CI/CD
+```
+shad_poker_bot/
+├── main.py              # Entry point, bot initialization
+├── config.py             # Configuration via dataclasses
+├── bot/
+│   ├── filters.py        # IsAdmin filter
+│   ├── formatting.py     # Message formatting
+│   └── handlers/
+│       ├── common.py     # /start, /help, /rating, /game, /tables
+│       ├── player.py     # /register, /join, /stats
+│       └── admin.py      # /new_game, /go, /ko, /chips, /close_table, /finish, /cancel
+├── db/
+│   ├── models.py         # SQL schema and init_db()
+│   └── repository.py     # Data access layer (async SQLite)
+└── services/
+    ├── game.py           # Game session orchestrator
+    ├── rating.py         # Rating engine (Elo + bounty + chips)
+    └── seating.py        # Table seating algorithms
+```
 
-В репозитории настроен GitHub Actions workflow, который при каждом push и pull request:
-
-1. Запускает линтер (ruff)
-2. Прогоняет полный набор тестов с замером покрытия
-3. Публикует отчёт о покрытии в summary
-
-## Как контрибьютить
-
-1. Форкни репозиторий
-2. Создай ветку: `git checkout -b feature/my-feature`
-3. Напиши код и тесты
-4. Убедись, что `pytest` проходит и `ruff check` не ругается
-5. Открой Pull Request с описанием изменений
-
-### Идеи для доработки
-
-- Автоматическая рассадка по столам (змейка по рейтингу)
-- Веб-интерфейс для просмотра статистики
-- Графики прогресса рейтинга
-- Сезонные награды и достижения
-- Интеграция с Google Sheets для бэкапа данных
-- Система ачивок (первый нокаут, серия из 5 побед и т.д.)
-
-## Лицензия
+## License
 
 MIT
 
-## Авторы
+## Authors
 
-Покерный клуб ШАД — преподаватели и студенты, увлечённые математикой, CS и покером по четвергам.
+Student passionate about math, CS, and Thursday poker nights.
