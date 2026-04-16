@@ -43,6 +43,7 @@ async def cmd_help(message: Message) -> None:
         "/go — start the game (generate seating)\n"
         "/ko @eliminated @eliminator — record a knockout\n"
         "/chips @player amount — record chip count\n"
+        "/open_table — open a new table\n"
         "/close_table N — close table N and calculate ratings\n"
         "/finish — finish the game and show results\n"
         "/cancel — cancel the current game"

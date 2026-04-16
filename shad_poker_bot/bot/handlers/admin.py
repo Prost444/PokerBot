@@ -1,8 +1,13 @@
 """Admin-only commands: /new_game, /go, /ko, /chips, /close_table, /finish, /cancel."""
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from shad_poker_bot.bot.filters import IsAdmin
 from shad_poker_bot.bot.formatting import (
@@ -22,6 +27,9 @@ def _admin_filter(admin_cfg: AdminConfig) -> IsAdmin:
     return IsAdmin(admin_cfg)
 
 
+# ── /new_game with inline buttons ──────────────────────────────────
+
+
 @router.message(Command("new_game"))
 async def cmd_new_game(
     message: Message,
@@ -39,21 +47,96 @@ async def cmd_new_game(
         await message.answer("Register first: /register Name")
         return
 
-    # Parse optional args: /new_game [regular|tournament] [snake|divisional]
+    # If args provided, create directly (CLI-style)
     args = (command.args or "").split()
-    game_type = "regular"
-    seating_type = "snake"
+    if args:
+        game_type = "regular"
+        seating_type = "snake"
+        for arg in args:
+            a = arg.lower()
+            if a in ("regular", "tournament"):
+                game_type = a
+            elif a in ("snake", "divisional"):
+                seating_type = a
+        await _create_game(message, game_service, player.id, game_type, seating_type)
+        return
 
-    for arg in args:
-        arg_lower = arg.lower()
-        if arg_lower in ("regular", "tournament"):
-            game_type = arg_lower
-        elif arg_lower in ("snake", "divisional"):
-            seating_type = arg_lower
+    # No args — show inline keyboard for game type
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🃏 Regular", callback_data="ng:regular",
+            ),
+            InlineKeyboardButton(
+                text="🏆 Tournament", callback_data="ng:tournament",
+            ),
+        ],
+    ])
+    await message.answer("Choose game type:", reply_markup=kb)
 
+
+@router.callback_query(F.data.startswith("ng:"))
+async def cb_new_game_type(
+    callback: CallbackQuery,
+    admin_cfg: AdminConfig,
+) -> None:
+    if not callback.from_user or callback.from_user.id not in admin_cfg.admin_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    game_type = callback.data.split(":")[1]  # type: ignore[union-attr]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🐍 Snake (balanced)",
+                callback_data=f"ngs:{game_type}:snake",
+            ),
+            InlineKeyboardButton(
+                text="📊 Divisional (by tier)",
+                callback_data=f"ngs:{game_type}:divisional",
+            ),
+        ],
+    ])
+    type_label = "🏆 Tournament" if game_type == "tournament" else "🃏 Regular"
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"{type_label} — choose seating:", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ngs:"))
+async def cb_new_game_seating(
+    callback: CallbackQuery,
+    repo: Repository,
+    game_service: GameService,
+    admin_cfg: AdminConfig,
+) -> None:
+    if not callback.from_user or callback.from_user.id not in admin_cfg.admin_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    parts = callback.data.split(":")  # type: ignore[union-attr]
+    game_type, seating_type = parts[1], parts[2]
+
+    player = await repo.get_player_by_tg(callback.from_user.id)
+    if not player:
+        await callback.answer("Register first", show_alert=True)
+        return
+
+    await callback.message.delete()  # type: ignore[union-attr]
+    await _create_game(
+        callback.message,  # type: ignore[arg-type]
+        game_service, player.id, game_type, seating_type,
+    )
+    await callback.answer()
+
+
+async def _create_game(
+    message, game_service, player_id, game_type, seating_type,
+) -> None:
     try:
         game = await game_service.create_game(
-            player.id, game_type, seating_type,
+            player_id, game_type, seating_type,
         )
     except GameError as e:
         await message.answer(str(e))
@@ -65,8 +148,11 @@ async def cmd_new_game(
         f"{type_label} <b>Game #{game.id} created!</b>\n"
         f"Seating: {seating_type}{bounty_note}\n\n"
         "Players, join up: /join\n"
-        "Admin starts the game with /go"
+        "Admin starts the game with /go",
     )
+
+
+# ── /go ────────────────────────────────────────────────────────────
 
 
 @router.message(Command("go"))
@@ -96,11 +182,14 @@ async def cmd_go(
         f"🎮 <b>Game #{game.id} started!</b>  Players: {total}\n\n"
         "Knockouts: /ko @eliminated @eliminator\n"
         "Record chips: /chips @player amount\n"
-        "Close a table: /close_table N\n"
+        "Close a table: /close_table\n"
         "Finish evening: /finish\n\n"
-        "Latecomers can join via /join <table_number>"
+        "Latecomers can join via /join",
     )
     await message.answer(seating_text(seating_result.tables))
+
+
+# ── /ko ────────────────────────────────────────────────────────────
 
 
 @router.message(Command("ko"))
@@ -124,7 +213,7 @@ async def cmd_knockout(
     if len(args) < 2:
         await message.answer(
             "Format: /ko @eliminated @eliminator\n"
-            "Example: /ko @ivan @petr"
+            "Example: /ko @ivan @petr",
         )
         return
 
@@ -156,19 +245,53 @@ async def cmd_knockout(
     await message.answer(
         f"💀 <b>{e_name}</b> eliminated (place {pos})!{table_info}\n"
         f"🎯 Knockout credited: <b>{k_name}</b>\n"
-        f"Remaining alive{table_info}: {alive}"
+        f"Remaining alive{table_info}: {alive}",
     )
 
     if alive == 1 and table_num:
         await message.answer(
             f"🏆 Last player standing at table {table_num}!\n"
-            f"Use /close_table {table_num} to finalize this table."
+            f"Use /close_table to finalize this table.",
         )
     elif alive == 1 and not table_num:
         await message.answer(
             "🏆 Last player standing!\n"
-            "Use /finish to finalize results."
+            "Use /finish to finalize results.",
         )
+
+
+# ── /open_table ────────────────────────────────────────────────────
+
+
+@router.message(Command("open_table"))
+async def cmd_open_table(
+    message: Message,
+    repo: Repository,
+    game_service: GameService,
+    admin_cfg: AdminConfig,
+) -> None:
+    if not await _admin_filter(admin_cfg)(message):
+        await message.answer("Only admins can open tables.")
+        return
+
+    game = await repo.get_active_game()
+    if not game:
+        await message.answer("No active game.")
+        return
+
+    try:
+        new_num = await game_service.open_table(game.id)
+    except GameError as e:
+        await message.answer(str(e))
+        return
+
+    await message.answer(
+        f"🪑 <b>Table {new_num}</b> opened!\n"
+        "Players can join it via /join",
+    )
+
+
+# ── /chips ─────────────────────────────────────────────────────────
 
 
 @router.message(Command("chips"))
@@ -192,7 +315,7 @@ async def cmd_chips(
     if len(args) < 2:
         await message.answer(
             "Format: /chips @player amount\n"
-            "Example: /chips @ivan 12500"
+            "Example: /chips @ivan 12500",
         )
         return
 
@@ -215,9 +338,10 @@ async def cmd_chips(
         await message.answer(str(e))
         return
 
-    await message.answer(
-        f"💰 <b>{name}</b>: {amount} chips recorded."
-    )
+    await message.answer(f"💰 <b>{name}</b>: {amount} chips recorded.")
+
+
+# ── /close_table with inline buttons ───────────────────────────────
 
 
 @router.message(Command("close_table"))
@@ -237,18 +361,61 @@ async def cmd_close_table(
         await message.answer("No active game.")
         return
 
+    # If number provided directly, close it
     args = (command.args or "").strip()
-    if not args or not args.isdigit():
-        await message.answer(
-            "Format: /close_table N\n"
-            "Example: /close_table 1"
+    if args and args.isdigit():
+        await _do_close_table(
+            message, repo, game_service, game.id, int(args),
         )
         return
 
-    table_number = int(args)
+    # Otherwise show buttons for active tables
+    active_tables = await repo.get_active_tables(game.id)
+    if not active_tables:
+        await message.answer("No active tables to close.")
+        return
 
+    buttons = []
+    for t in active_tables:
+        alive = await repo.count_alive_at_table(t.id)
+        total = len(await repo.get_table_players(t.id))
+        buttons.append([InlineKeyboardButton(
+            text=f"Table {t.table_number} ({alive}/{total} alive)",
+            callback_data=f"ct:{t.table_number}",
+        )])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer("Choose a table to close:", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("ct:"))
+async def cb_close_table(
+    callback: CallbackQuery,
+    repo: Repository,
+    game_service: GameService,
+    admin_cfg: AdminConfig,
+) -> None:
+    if not callback.from_user or callback.from_user.id not in admin_cfg.admin_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    table_number = int(callback.data.split(":")[1])  # type: ignore[union-attr]
+    game = await repo.get_active_game()
+    if not game:
+        await callback.answer("No active game", show_alert=True)
+        return
+
+    await callback.message.delete()  # type: ignore[union-attr]
+    await _do_close_table(
+        callback.message,  # type: ignore[arg-type]
+        repo, game_service, game.id, table_number,
+    )
+    await callback.answer()
+
+
+async def _do_close_table(message, repo, game_service, game_id, table_number):
     try:
-        summary = await game_service.close_table(game.id, table_number)
+        summary = await game_service.close_table(game_id, table_number)
     except GameError as e:
         await message.answer(str(e))
         return
@@ -263,11 +430,14 @@ async def cmd_close_table(
         table_summary_text(table_number, summary.results, names),
     )
 
-    active_tables = await repo.get_active_tables(game.id)
+    active_tables = await repo.get_active_tables(game_id)
     if not active_tables:
         await message.answer(
-            "All tables are closed! Use /finish to finalize the evening."
+            "All tables are closed! Use /finish to finalize the evening.",
         )
+
+
+# ── /finish ────────────────────────────────────────────────────────
 
 
 @router.message(Command("finish"))
@@ -304,9 +474,12 @@ async def cmd_finish(
     await message.answer(leaderboard_text(top))
 
 
+# ── /cancel ────────────────────────────────────────────────────────
+
+
 @router.message(Command("cancel"))
 async def cmd_cancel(
-    message: Message, repo: Repository, admin_cfg: AdminConfig
+    message: Message, repo: Repository, admin_cfg: AdminConfig,
 ) -> None:
     if not await _admin_filter(admin_cfg)(message):
         await message.answer("Only admins can cancel the game.")
@@ -321,7 +494,7 @@ async def cmd_cancel(
     await message.answer(f"❌ Game #{game.id} cancelled.")
 
 
-# ── helper ──────────────────────────────────────────────────────────
+# ── helpers ────────────────────────────────────────────────────────
 
 async def _resolve_player(repo: Repository, token: str):
     """Resolve @username or display name to a PlayerDTO."""

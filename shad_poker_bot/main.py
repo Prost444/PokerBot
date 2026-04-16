@@ -7,6 +7,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand
 
 from shad_poker_bot.bot.handlers import admin_router, common_router, player_router
 from shad_poker_bot.config import load_config
@@ -46,6 +47,23 @@ async def main() -> None:
     dp.include_router(common_router)
     dp.include_router(player_router)
     dp.include_router(admin_router)
+
+    # ── Command menu (the "/" hint list in Telegram) ─────────────────
+    await bot.set_my_commands([
+        BotCommand(command="join", description="Join current game"),
+        BotCommand(command="rating", description="Leaderboard"),
+        BotCommand(command="stats", description="Your statistics"),
+        BotCommand(command="game", description="Current game status"),
+        BotCommand(command="tables", description="Table seating & status"),
+        BotCommand(command="new_game", description="Create a game evening"),
+        BotCommand(command="go", description="Start game & generate seating"),
+        BotCommand(command="ko", description="Record a knockout"),
+        BotCommand(command="chips", description="Record chip count"),
+        BotCommand(command="open_table", description="Open a new table"),
+        BotCommand(command="close_table", description="Close table & calc ratings"),
+        BotCommand(command="finish", description="Finish evening"),
+        BotCommand(command="help", description="All commands"),
+    ])
 
     log.info("Bot starting — polling…")
     try:

@@ -198,6 +198,17 @@ class GameService:
 
     # ── During game ─────────────────────────────────────────────────
 
+    async def open_table(self, game_id: int) -> int:
+        """Create a new empty table. Returns the new table number."""
+        game = await self._get_game_or_raise(game_id)
+        if game.status != "active":
+            raise GameError("Game is not in active status.")
+
+        existing = await self.repo.get_game_tables(game_id)
+        new_num = max((t.table_number for t in existing), default=0) + 1
+        await self.repo.create_game_table(game_id, new_num)
+        return new_num
+
     async def record_chips(
         self,
         game_id: int,
@@ -347,15 +358,18 @@ class GameService:
             raise GameError("Game is not in active status.")
 
         # Close any remaining active tables
-        active_tables = await self.repo.get_active_tables(game_id)
+        all_tables = await self.repo.get_game_tables(game_id)
+        active_tables = [t for t in all_tables if t.status == "active"]
         all_deltas: list[RatingDelta] = []
 
         if active_tables:
             for atbl in active_tables:
                 ts = await self.close_table(game_id, atbl.table_number)
                 all_deltas.extend(ts.results)
-        else:
+        elif not all_tables:
+            # No tables at all (legacy single-table mode)
             all_deltas = await self._finish_single_table(game_id, game)
+        # else: all tables already closed via /close_table — skip
 
         # Update attendance streaks
         all_gps = await self.repo.get_game_players(game_id)

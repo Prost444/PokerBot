@@ -554,6 +554,61 @@ class TestCloseTable:
         with pytest.raises(GameError, match="already closed"):
             await game_service.close_table(game.id, tables[0].table_number)
 
+    async def test_finish_after_all_tables_closed_no_double_calc(
+        self, populated_repo: Repository, game_service: GameService
+    ):
+        """If all tables are closed via /close_table, /finish should NOT
+        recalculate ratings a second time."""
+        p1 = await populated_repo.get_player_by_tg(1001)
+        game = await game_service.create_game(p1.id)
+        for tg in [1001, 1002]:
+            await game_service.join_game(tg)
+        await game_service.start_game(game.id)
+        await game_service.record_knockout(game.id, 1002, 1001)
+
+        tables = await populated_repo.get_game_tables(game.id)
+        await game_service.close_table(game.id, tables[0].table_number)
+
+        # Elo after close_table
+        p1_after_close = await populated_repo.get_player(p1.id)
+
+        # /finish should NOT recalculate — all tables already closed
+        summary = await game_service.finish_game(game.id)
+        assert summary.results == []  # no new deltas
+
+        # Elo unchanged
+        p1_after_finish = await populated_repo.get_player(p1.id)
+        assert abs(p1_after_finish.elo - p1_after_close.elo) < 0.01
+
+
+# ── Open table ────────────────────────────────────────────────────
+
+
+class TestOpenTable:
+    async def test_open_table(
+        self, populated_repo: Repository, game_service: GameService
+    ):
+        p1 = await populated_repo.get_player_by_tg(1001)
+        game = await game_service.create_game(p1.id)
+        await game_service.join_game(1001)
+        await game_service.join_game(1002)
+        await game_service.start_game(game.id)
+
+        tables_before = await populated_repo.get_game_tables(game.id)
+        new_num = await game_service.open_table(game.id)
+        tables_after = await populated_repo.get_game_tables(game.id)
+
+        assert len(tables_after) == len(tables_before) + 1
+        assert new_num == len(tables_after)
+
+    async def test_open_table_not_active_raises(
+        self, populated_repo: Repository, game_service: GameService
+    ):
+        p1 = await populated_repo.get_player_by_tg(1001)
+        game = await game_service.create_game(p1.id)
+        with pytest.raises(GameError, match="not in active status"):
+            await game_service.open_table(game.id)
+
 
 # ── Full evening scenario ──────────────────────────────────────────
 
